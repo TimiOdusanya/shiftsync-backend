@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== AUTH & USERS ==============
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  role         Role     @default(STAFF)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  managerLocations        ManagerLocation[]
+  staffLocations          StaffLocationCertification[]
+  staffSkills             StaffSkill[]
+  availabilityRecurring   AvailabilityRecurring[]
+  availabilityExceptions  AvailabilityException[]
+  shiftAssignments        ShiftAssignment[]
+  swapRequestsInitiated   SwapRequest[] @relation("SwapRequester")
+  swapRequestsReceived    SwapRequest[] @relation("SwapReceiver")
+  dropRequests            DropRequest[]
+  shiftPickups            ShiftPickup[]
+  notifications           Notification[]
+  auditLogs               AuditLog[]
+  desiredHours            DesiredHours?
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+model ManagerLocation {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  locationId String   @map("location_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationId])
+  @@map("manager_locations")
+}
+
+// ============== LOCATIONS & SKILLS ==============
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  timezone  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  managerLocations     ManagerLocation[]
+  staffCertifications  StaffLocationCertification[]
+  shifts               Shift[]
+}
+
+model Skill {
+  id   String @id @default(cuid())
+  name String @unique
+
+  staffSkills StaffSkill[]
+  shifts      Shift[]
+}
+
+model StaffSkill {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  skillId   String   @map("skill_id")
+  grantedAt DateTime @default(now()) @map("granted_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@map("staff_skills")
+}
+
+model StaffLocationCertification {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  locationId  String   @map("location_id")
+  certifiedAt DateTime @default(now()) @map("certified_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationId])
+  @@map("staff_location_certifications")
+}
+
+// ============== AVAILABILITY ==============
+model AvailabilityRecurring {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  dayOfWeek Int      @map("day_of_week")
+  startTime String   @map("start_time")
+  endTime   String   @map("end_time")
+  timezone  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@map("availability_recurring")
+}
+
+model AvailabilityException {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  date         DateTime @db.Date @map("date")
+  isAvailable  Boolean  @map("is_available")
+  startTime    String?  @map("start_time")
+  endTime      String?  @map("end_time")
+  timezone     String
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("availability_exceptions")
+}
+
+model DesiredHours {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  minHours  Decimal? @map("min_hours") @db.Decimal(4, 2)
+  maxHours  Decimal? @map("max_hours") @db.Decimal(4, 2)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("desired_hours")
+}
+
+// ============== SHIFTS ==============
+model Shift {
+  id                  String        @id @default(cuid())
+  locationId          String        @map("location_id")
+  skillId             String        @map("skill_id")
+  startAt             DateTime      @map("start_at")
+  endAt               DateTime      @map("end_at")
+  headcountRequired   Int           @map("headcount_required")
+  scheduleState       ScheduleState @default(DRAFT) @map("schedule_state")
+  publishedAt         DateTime?     @map("published_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  editedAfterPublish  Boolean       @default(false) @map("edited_after_publish")
+
+  location    Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  skill       Skill             @relation(fields: [skillId], references: [id], onDelete: Restrict)
+  assignments ShiftAssignment[]
+  swapRequests SwapRequest[]
+  dropRequests DropRequest[]
+}
+
+enum ScheduleState {
+  DRAFT
+  PUBLISHED
+}
+
+model ShiftAssignment {
+  id         String   @id @default(cuid())
+  shiftId    String   @map("shift_id")
+  userId     String   @map("user_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  assignedBy String?  @map("assigned_by")
+
+  shift        Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  swapRequest  SwapRequest?
+
+  @@unique([shiftId, userId])
+  @@map("shift_assignments")
+}
+
+// ============== SWAP & DROP ==============
+model SwapRequest {
+  id                 String     @id @default(cuid())
+  shiftId            String     @map("shift_id")
+  requesterId        String     @map("requester_id")
+  receiverId         String     @map("receiver_id")
+  status             SwapStatus @default(PENDING_ACCEPTANCE)
+  managerApprovedBy  String?    @map("manager_approved_by")
+  managerApprovedAt  DateTime?  @map("manager_approved_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  cancelledAt        DateTime?  @map("cancelled_at")
+  cancelReason       String?    @map("cancel_reason")
+
+  shift       Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  requester   User             @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver    User             @relation("SwapReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  assignment  ShiftAssignment  @relation(fields: [shiftId, requesterId], references: [shiftId, userId], onDelete: Cascade)
+
+  @@unique([shiftId, requesterId])
+  @@map("swap_requests")
+}
+
+enum SwapStatus {
+  PENDING_ACCEPTANCE
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model DropRequest {
+  id                 String    @id @default(cuid())
+  shiftId            String    @map("shift_id")
+  userId             String    @map("user_id")
+  status             DropStatus @default(OPEN)
+  claimedBy          String?   @map("claimed_by")
+  claimedAt          DateTime? @map("claimed_at")
+  managerApprovedBy  String?   @map("manager_approved_by")
+  managerApprovedAt  DateTime? @map("manager_approved_at")
+  expiresAt          DateTime  @map("expires_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  shift  Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pickup ShiftPickup?
+
+  @@unique([shiftId, userId])
+  @@map("drop_requests")
+}
+
+enum DropStatus {
+  OPEN
+  CLAIMED_PENDING_APPROVAL
+  APPROVED
+  EXPIRED
+  CANCELLED
+}
+
+model ShiftPickup {
+  id             String   @id @default(cuid())
+  dropRequestId  String   @unique @map("drop_request_id")
+  userId         String   @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  dropRequest DropRequest @relation(fields: [dropRequestId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("shift_pickups")
+}
+
+// ============== NOTIFICATIONS & AUDIT ==============
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  type      String    @map("type")
+  title     String
+  body      String?   @db.Text
+  readAt    DateTime? @map("read_at")
+  metadata  Json?     @map("metadata")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  action     String
+  userId     String   @map("user_id")
+  before     Json?    @map("before")
+  after      Json?    @map("after")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
