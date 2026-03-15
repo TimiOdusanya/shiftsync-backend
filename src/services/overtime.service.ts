@@ -10,20 +10,42 @@ const DAILY_BLOCK_HOURS = 12;
 const CONSECUTIVE_DAYS_WARNING = 6;
 const CONSECUTIVE_DAYS_OVERRIDE = 7;
 
+function getHoursPerCalendarDay(
+  startAt: Date,
+  endAt: Date,
+  timezone: string = "UTC"
+): Array<{ dateKey: string; hours: number }> {
+  const dayHoursMap = new Map<string, number>();
+  const msPerHour = 60 * 60 * 1000;
+  let t = startAt.getTime();
+  const endMs = endAt.getTime();
+  while (t < endMs) {
+    const d = new Date(t);
+    const dateKey = d.toLocaleDateString("en-CA", { timeZone: timezone });
+    const nextHour = Math.min(t + msPerHour, endMs);
+    const hours = (nextHour - t) / msPerHour;
+    dayHoursMap.set(dateKey, (dayHoursMap.get(dateKey) ?? 0) + hours);
+    t = nextHour;
+  }
+  return Array.from(dayHoursMap.entries()).map(([dateKey, hours]) => ({ dateKey, hours }));
+}
+
 export const overtimeService = {
   async getWarningsForUser(userId: string, weekStart: Date, weekEnd: Date): Promise<OvertimeWarning[]> {
     const assignments = await assignmentRepository.findByUserId(userId, weekStart, weekEnd);
     const warnings: OvertimeWarning[] = [];
     let weeklyHours = 0;
-    const dayHours = new Map<number, number>();
-    const daysWithShift = new Set<number>();
+    const dayHours = new Map<string, number>();
+    const daysWithShift = new Set<string>();
 
     for (const a of assignments) {
       const hours = hoursBetween(a.shift.startAt, a.shift.endAt);
       weeklyHours += hours;
-      const dayKey = new Date(a.shift.startAt).setHours(0, 0, 0, 0);
-      dayHours.set(dayKey, (dayHours.get(dayKey) ?? 0) + hours);
-      daysWithShift.add(dayKey);
+      const perDay = getHoursPerCalendarDay(a.shift.startAt, a.shift.endAt, "UTC");
+      for (const { dateKey, hours: dayH } of perDay) {
+        dayHours.set(dateKey, (dayHours.get(dateKey) ?? 0) + dayH);
+        daysWithShift.add(dateKey);
+      }
     }
 
     if (weeklyHours >= WEEKLY_OT_HOURS) {
@@ -61,12 +83,14 @@ export const overtimeService = {
       }
     }
 
-    const sortedDays = Array.from(daysWithShift).sort((a, b) => a - b);
+    const sortedDayStrs = Array.from(daysWithShift).sort();
+    const dayNums = sortedDayStrs.map((d) =>
+      Math.floor(new Date(d + "T12:00:00Z").getTime() / (24 * 60 * 60 * 1000))
+    );
     let consecutive = 0;
     let maxConsecutive = 0;
     let prev = -2;
-    for (const d of sortedDays) {
-      const day = Math.floor(d / (24 * 60 * 60 * 1000));
+    for (const day of dayNums) {
       if (day === prev + 1) consecutive++;
       else consecutive = 1;
       prev = day;
@@ -133,20 +157,23 @@ export const overtimeService = {
     userId: string,
     weekStart: Date,
     weekEnd: Date,
-    tentativeShift: { startAt: Date; endAt: Date }
+    tentativeShift: { startAt: Date; endAt: Date },
+    locationTimezone?: string
   ): Promise<OvertimeWarning[]> {
     const assignments = await assignmentRepository.findByUserId(userId, weekStart, weekEnd);
     const shifts = assignments.map((a: { shift: { startAt: Date; endAt: Date } }) => a.shift);
     shifts.push(tentativeShift);
     let weeklyHours = 0;
-    const dayHours = new Map<number, number>();
-    const daysWithShift = new Set<number>();
+    const dayHours = new Map<string, number>();
+    const daysWithShift = new Set<string>();
     for (const s of shifts) {
       const hours = hoursBetween(s.startAt, s.endAt);
       weeklyHours += hours;
-      const dayKey = new Date(s.startAt).setHours(0, 0, 0, 0);
-      dayHours.set(dayKey, (dayHours.get(dayKey) ?? 0) + hours);
-      daysWithShift.add(dayKey);
+      const perDay = getHoursPerCalendarDay(s.startAt, s.endAt, locationTimezone);
+      for (const { dateKey, hours: dayH } of perDay) {
+        dayHours.set(dateKey, (dayHours.get(dateKey) ?? 0) + dayH);
+        daysWithShift.add(dateKey);
+      }
     }
     const warnings: OvertimeWarning[] = [];
     if (weeklyHours >= WEEKLY_OT_HOURS) {
@@ -167,12 +194,14 @@ export const overtimeService = {
         warnings.push({ userId, type: "daily", message: `Daily hours (${h.toFixed(1)}) exceed 8`, hours: h });
       }
     }
-    const sortedDays = Array.from(daysWithShift).sort((a, b) => a - b);
+    const sortedDayStrs = Array.from(daysWithShift).sort();
+    const dayNums = sortedDayStrs.map((d) =>
+      Math.floor(new Date(d + "T12:00:00Z").getTime() / (24 * 60 * 60 * 1000))
+    );
     let consecutive = 0;
     let maxConsecutive = 0;
     let prev = -2;
-    for (const d of sortedDays) {
-      const day = Math.floor(d / (24 * 60 * 60 * 1000));
+    for (const day of dayNums) {
       if (day === prev + 1) consecutive++;
       else consecutive = 1;
       prev = day;

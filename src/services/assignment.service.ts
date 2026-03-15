@@ -37,20 +37,25 @@ export const assignmentService = {
 
     const weekStart = startOfWeek(shift.startAt);
     const weekEnd = endOfWeek(shift.startAt);
+    const locationTimezone = shift.location?.timezone;
     const overtimeWarnings = await overtimeService.getWarningsWithTentative(
       body.userId,
       weekStart,
       weekEnd,
-      { startAt: shift.startAt, endAt: shift.endAt }
+      { startAt: shift.startAt, endAt: shift.endAt },
+      locationTimezone
     );
     const dailyBlock = overtimeWarnings.find((w) => w.type === "daily" && w.requiresOverride);
     if (dailyBlock) {
+      const alternatives = (await constraintService.getAlternatives(shiftId)).filter(
+        (a) => a.userId !== body.userId
+      );
       return {
         success: false,
         violation: {
           rule: "OVERTIME",
           message: dailyBlock.message,
-          alternatives: await constraintService.getAlternatives(shiftId),
+          alternatives,
         },
       };
     }
