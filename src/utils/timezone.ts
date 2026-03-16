@@ -42,34 +42,34 @@ export function getAvailabilityWindowUtc(
   endTime: string,
   timezone: string
 ): { start: Date; end: Date } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  const dayParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).formatToParts(dateUtc);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
-  const y = Number(get("year"));
-  const m = Number(get("month")) - 1;
-  const d = Number(get("day"));
+  const get = (type: string) => dayParts.find((p) => p.type === type)?.value ?? "0";
+  const localHour = Number(get("hour"));
+  const localMinute = Number(get("minute"));
+  const localSecond = Number(get("second"));
+  const msSinceMidnight =
+    (localHour * 3600 + localMinute * 60 + localSecond) * 1000;
+  const midnightUtc = new Date(dateUtc.getTime() - msSinceMidnight);
+
   const [sh, sm] = startTime.split(":").map(Number);
   const [eh, em] = endTime.split(":").map(Number);
-  const localStart = new Date(Date.UTC(y, m, d, sh, sm, 0));
-  let localEnd = new Date(Date.UTC(y, m, d, eh, em, 0));
-  if (localEnd <= localStart) localEnd = new Date(localEnd.getTime() + 24 * 60 * 60 * 1000);
-  const offsetAtStart = getTimezoneOffsetMs(localStart, timezone);
-  const offsetAtEnd = getTimezoneOffsetMs(localEnd, timezone);
-  return {
-    start: new Date(localStart.getTime() - offsetAtStart),
-    end: new Date(localEnd.getTime() - offsetAtEnd),
-  };
-}
+  const startMs = (sh * 3600 + sm * 60) * 1000;
+  let endMs = (eh * 3600 + em * 60) * 1000;
+  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
 
-function getTimezoneOffsetMs(date: Date, timezone: string): number {
-  const utc = date.getTime();
-  const str = date.toLocaleString("en-US", { timeZone: timezone });
-  const local = new Date(str).getTime();
-  return utc - local;
+  return {
+    start: new Date(midnightUtc.getTime() + startMs),
+    end: new Date(midnightUtc.getTime() + endMs),
+  };
 }
 
 /** Get day of week (0=Sun, 6=Sat) in the given timezone for a UTC date. */

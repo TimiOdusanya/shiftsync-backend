@@ -54,7 +54,8 @@ export const constraintService = {
     if (!available)
       return {
         rule: "AVAILABILITY",
-        message: "Staff is not available during this shift time",
+        message:
+          "Staff is not available during this shift time. The shift falls outside their set availability windows (or they have a day-off exception for this date).",
         alternatives: await suggestAlternatives(shift),
       };
 
@@ -101,19 +102,26 @@ async function checkAvailability(
     ),
   ]);
 
-  const timezone = recurring[0]?.timezone ?? "UTC";
+  const timezone = recurring[0]?.timezone ?? exceptions[0]?.timezone ?? "UTC";
   const exceptionByDateStr = new Map<string, (typeof exceptions)[0]>();
   exceptions.forEach((e) => exceptionByDateStr.set(e.date.toISOString().slice(0, 10), e));
+
+  if (recurring.length === 0 && exceptions.length === 0) return true;
+
+  const dateStr0 = shiftStart.toLocaleDateString("en-CA", { timeZone: timezone });
+  const dateStr1 = shiftEnd.toLocaleDateString("en-CA", { timeZone: timezone });
+  const shiftDateStrs = new Set<string>([dateStr0]);
+  if (dateStr1 !== dateStr0) shiftDateStrs.add(dateStr1);
+  for (const dateStr of shiftDateStrs) {
+    const exc = exceptionByDateStr.get(dateStr);
+    if (exc && !exc.isAvailable) return false;
+  }
 
   const recurringByDay = new Map<number, (typeof recurring)[0]>();
   recurring.forEach((r) => recurringByDay.set(r.dayOfWeek, r));
 
-  if (recurring.length === 0 && exceptions.length === 0) return true;
-
   const day0 = getDayOfWeekInTimezone(shiftStart, timezone);
   const day1 = getDayOfWeekInTimezone(shiftEnd, timezone);
-  const dateStr0 = shiftStart.toLocaleDateString("en-CA", { timeZone: timezone });
-  const dateStr1 = shiftEnd.toLocaleDateString("en-CA", { timeZone: timezone });
   const date0Utc = new Date(dateStr0 + "T12:00:00Z");
   const date1Utc = new Date(dateStr1 + "T12:00:00Z");
 
@@ -138,6 +146,7 @@ async function checkAvailability(
 
   for (const w of windows) {
     if (shiftStart >= w.start && shiftEnd <= w.end) return true;
+    if (shiftStart >= w.start && shiftStart <= w.end) return true;
     if (shiftsOverlap(shiftStart, shiftEnd, w.start, w.end)) {
       const overlapStart = new Date(Math.max(shiftStart.getTime(), w.start.getTime()));
       const overlapEnd = new Date(Math.min(shiftEnd.getTime(), w.end.getTime()));
@@ -145,7 +154,7 @@ async function checkAvailability(
         return true;
     }
   }
-  return windows.length > 0 ? false : true;
+  return false;
 }
 
 async function suggestAlternatives(shift: {
@@ -167,6 +176,8 @@ async function suggestAlternatives(shift: {
       shift.id
     );
     if (overlapping.length > 0) continue;
+    const available = await checkAvailability(u.id, shift.startAt, shift.endAt);
+    if (!available) continue;
     result.push({ userId: u.id, name: `${u.firstName} ${u.lastName}` });
   }
   return result.slice(0, 10);

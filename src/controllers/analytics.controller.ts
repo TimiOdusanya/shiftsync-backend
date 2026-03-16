@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
+import { Role } from "@prisma/client";
 import { overtimeService } from "../services/overtime.service";
 import { fairnessService } from "../services/fairness.service";
 import { assignmentService } from "../services/assignment.service";
+import { userRepository } from "../repositories/user.repository";
+import { locationRepository } from "../repositories/location.repository";
 
 export const analyticsController = {
   async getOvertimeProjection(req: Request, res: Response): Promise<void> {
@@ -51,8 +54,38 @@ export const analyticsController = {
   },
 
   async getOnDuty(req: Request, res: Response): Promise<void> {
+    const userId = req.userId;
+    const userRole = req.userRole;
+    if (!userId || !userRole) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const locationId = req.query.locationId as string | undefined;
-    const assignments = await assignmentService.getActiveNow(locationId);
+    let allowedLocationIds: string[] | null = null;
+
+    if (userRole === Role.ADMIN) {
+      allowedLocationIds = null; // all locations
+    } else if (userRole === Role.MANAGER) {
+      allowedLocationIds = await userRepository.getManagerLocationIds(userId);
+      if (locationId && !allowedLocationIds.includes(locationId)) {
+        res.status(403).json({ error: "You do not manage this location" });
+        return;
+      }
+    } else if (userRole === Role.STAFF) {
+      allowedLocationIds = await userRepository.getStaffLocationIds(userId);
+      if (locationId && !allowedLocationIds.includes(locationId)) {
+        res.status(403).json({ error: "You are not certified for this location" });
+        return;
+      }
+    }
+
+    if (Array.isArray(allowedLocationIds) && allowedLocationIds.length === 0) {
+      res.json({});
+      return;
+    }
+
+    const assignments = await assignmentService.getActiveNow(locationId, allowedLocationIds);
     const byLocation: Record<string, unknown[]> = {};
     for (const a of assignments) {
       const locId = a.shift.locationId;
@@ -66,5 +99,31 @@ export const analyticsController = {
       });
     }
     res.json(byLocation);
+  },
+
+  /** Returns location IDs the current user is allowed to see on the on-duty view (for dropdown filtering). */
+  async getAllowedOnDutyLocationIds(req: Request, res: Response): Promise<void> {
+    const userId = req.userId;
+    const userRole = req.userRole;
+    if (!userId || !userRole) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    if (userRole === Role.ADMIN) {
+      const locations = await locationRepository.findMany();
+      res.json({ locationIds: locations.map((l) => l.id) });
+      return;
+    }
+    if (userRole === Role.MANAGER) {
+      const locationIds = await userRepository.getManagerLocationIds(userId);
+      res.json({ locationIds });
+      return;
+    }
+    if (userRole === Role.STAFF) {
+      const locationIds = await userRepository.getStaffLocationIds(userId);
+      res.json({ locationIds });
+      return;
+    }
+    res.json({ locationIds: [] });
   },
 };

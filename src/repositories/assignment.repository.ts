@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, ScheduleState } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -55,17 +55,25 @@ export const assignmentRepository = {
     return prisma.shiftAssignment.count({ where: { shiftId } });
   },
 
-  findActiveNow(locationId?: string) {
+  findActiveNow(locationId?: string, allowedLocationIds?: string[] | null) {
     const now = new Date();
-    const where = {
-      shift: {
-        startAt: { lte: now },
-        endAt: { gte: now },
-        ...(locationId && { locationId }),
-      },
+    const shiftWhere: {
+      startAt: { lte: Date };
+      endAt: { gte: Date };
+      scheduleState: ScheduleState;
+      locationId?: string | { in: string[] };
+    } = {
+      startAt: { lte: now },
+      endAt: { gte: now },
+      scheduleState: ScheduleState.PUBLISHED,
     };
+    if (locationId) {
+      shiftWhere.locationId = locationId;
+    } else if (Array.isArray(allowedLocationIds) && allowedLocationIds.length > 0) {
+      shiftWhere.locationId = { in: allowedLocationIds };
+    }
     return prisma.shiftAssignment.findMany({
-      where,
+      where: { shift: shiftWhere },
       include: { user: true, shift: { include: { location: true, skill: true } } },
     });
   },

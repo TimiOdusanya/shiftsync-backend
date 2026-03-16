@@ -12,6 +12,7 @@ router.get("/overtime/projection", analyticsController.getOvertimeProjection.bin
 router.get("/overtime/what-if", analyticsController.getWhatIf.bind(analyticsController));
 router.get("/fairness", analyticsController.getFairness.bind(analyticsController));
 router.get("/on-duty", analyticsController.getOnDuty.bind(analyticsController));
+router.get("/on-duty/allowed-locations", analyticsController.getAllowedOnDutyLocationIds.bind(analyticsController));
 
 router.get("/overtime/warnings", overtimeController.getWarnings.bind(overtimeController));
 router.get("/overtime/projected-hours", overtimeController.getProjectedHours.bind(overtimeController));

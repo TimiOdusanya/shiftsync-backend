@@ -35,6 +35,21 @@ export const assignmentService = {
     const shift = await shiftRepository.findById(shiftId);
     if (!shift) return { success: false, violation: { rule: "NOT_FOUND", message: "Shift not found" } };
 
+    const currentCount = await assignmentRepository.countByShiftId(shiftId);
+    if (currentCount >= (shift.headcountRequired ?? 1)) {
+      const alternatives = (await constraintService.getAlternatives(shiftId)).filter(
+        (a) => a.userId !== body.userId
+      );
+      return {
+        success: false,
+        violation: {
+          rule: "HEADCOUNT",
+          message: `This shift requires ${shift.headcountRequired} staff; ${currentCount} already assigned. Cannot add more.`,
+          alternatives,
+        },
+      };
+    }
+
     const weekStart = startOfWeek(shift.startAt);
     const weekEnd = endOfWeek(shift.startAt);
     const locationTimezone = shift.location?.timezone;
@@ -98,7 +113,7 @@ export const assignmentService = {
     return { removed: true };
   },
 
-  async getActiveNow(locationId?: string) {
-    return assignmentRepository.findActiveNow(locationId);
+  async getActiveNow(locationId?: string, allowedLocationIds?: string[] | null) {
+    return assignmentRepository.findActiveNow(locationId, allowedLocationIds);
   },
 };
