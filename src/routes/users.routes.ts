@@ -3,7 +3,7 @@ import { userController } from "../controllers/user.controller";
 import { authMiddleware } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { validateBody, validateParams, validateQuery } from "../middleware/validate";
-import { createUserSchema, updateUserSchema, userIdParamSchema, paginationQuerySchema } from "../validators/user";
+import { createUserSchema, updateUserSchema, userIdParamSchema, listUsersQuerySchema } from "../validators/user";
 import type { ZodSchema } from "zod";
 import { bulkRecurringSchema, exceptionAvailabilitySchema, desiredHoursSchema } from "../validators/availability";
 import { Role } from "@prisma/client";
@@ -12,7 +12,7 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get("/", validateQuery(paginationQuerySchema as unknown as ZodSchema<{ page: number; limit: number }>), userController.list.bind(userController));
+router.get("/", validateQuery(listUsersQuerySchema as unknown as ZodSchema<{ page?: number; limit?: number; role?: string; locationId?: string }>), userController.list.bind(userController));
 router.get("/:id", validateParams(userIdParamSchema), userController.getById.bind(userController));
 router.post("/", requireRole(Role.ADMIN), validateBody(createUserSchema), userController.create.bind(userController));
 router.patch("/:id", validateParams(userIdParamSchema), validateBody(updateUserSchema), userController.update.bind(userController));

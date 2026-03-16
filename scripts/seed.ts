@@ -137,11 +137,67 @@ export async function runSeed(): Promise<void> {
     },
   });
 
+  const staff3 = await prisma.user.upsert({
+    where: { email: "staff3@coastaleats.com" },
+    update: {},
+    create: {
+      email: "staff3@coastaleats.com",
+      passwordHash: hashedPassword,
+      firstName: "Alex",
+      lastName: "Server",
+      role: Role.STAFF,
+    },
+  });
+
+  const staff4 = await prisma.user.upsert({
+    where: { email: "staff4@coastaleats.com" },
+    update: {},
+    create: {
+      email: "staff4@coastaleats.com",
+      passwordHash: hashedPassword,
+      firstName: "Maria",
+      lastName: "Cook",
+      role: Role.STAFF,
+    },
+  });
+
+  const staff5 = await prisma.user.upsert({
+    where: { email: "staff5@coastaleats.com" },
+    update: {},
+    create: {
+      email: "staff5@coastaleats.com",
+      passwordHash: hashedPassword,
+      firstName: "Jordan",
+      lastName: "Host",
+      role: Role.STAFF,
+    },
+  });
+
+  const staff6 = await prisma.user.upsert({
+    where: { email: "staff6@coastaleats.com" },
+    update: {},
+    create: {
+      email: "staff6@coastaleats.com",
+      passwordHash: hashedPassword,
+      firstName: "Sam",
+      lastName: "Bartender",
+      role: Role.STAFF,
+    },
+  });
+
   await prisma.staffLocationCertification.createMany({
     data: [
       { userId: staff1.id, locationId: locations[0].id },
       { userId: staff1.id, locationId: locations[1].id },
       { userId: staff2.id, locationId: locations[0].id },
+      { userId: staff3.id, locationId: locations[0].id },
+      { userId: staff3.id, locationId: locations[1].id },
+      { userId: staff4.id, locationId: locations[0].id },
+      { userId: staff4.id, locationId: locations[1].id },
+      { userId: staff5.id, locationId: locations[0].id },
+      { userId: staff5.id, locationId: locations[1].id },
+      { userId: staff6.id, locationId: locations[0].id },
+      { userId: staff6.id, locationId: locations[1].id },
     ],
     skipDuplicates: true,
   });
@@ -150,6 +206,10 @@ export async function runSeed(): Promise<void> {
     data: [
       { userId: staff1.id, skillId: skills[2].id },
       { userId: staff2.id, skillId: skills[1].id },
+      { userId: staff3.id, skillId: skills[2].id },
+      { userId: staff4.id, skillId: skills[1].id },
+      { userId: staff5.id, skillId: skills[3].id },
+      { userId: staff6.id, skillId: skills[0].id },
     ],
     skipDuplicates: true,
   });
@@ -190,5 +250,5 @@ export async function runSeed(): Promise<void> {
   console.log("Seed complete. Test accounts (password: password123):");
   console.log("  Admin:   admin@coastaleats.com");
   console.log("  Manager: manager@coastaleats.com");
-  console.log("  Staff:   staff1@coastaleats.com, staff2@coastaleats.com");
+  console.log("  Staff:   staff1@coastaleats.com, staff2@coastaleats.com, staff3@coastaleats.com, staff4@coastaleats.com, staff5@coastaleats.com, staff6@coastaleats.com");
 }

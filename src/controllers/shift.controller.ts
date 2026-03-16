@@ -6,7 +6,7 @@ import type { ShiftFilters } from "../repositories/shift.repository";
 export const shiftController = {
   async getById(req: Request, res: Response): Promise<void> {
     const id = req.params.id as string;
-    const shift = await shiftService.getById(id);
+    const shift = await shiftService.getById(id, req.userRole, req.userId);
     if (!shift) {
       res.status(404).json({ error: "Shift not found" });
       return;

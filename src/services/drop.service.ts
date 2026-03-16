@@ -1,5 +1,7 @@
+import { Prisma, Role } from "@prisma/client";
 import { dropRepository } from "../repositories/drop.repository";
 import { assignmentRepository } from "../repositories/assignment.repository";
+import { userRepository } from "../repositories/user.repository";
 import { constraintService } from "./constraint.service";
 import { notificationService } from "./notification.service";
 import { auditService } from "./audit.service";
@@ -26,9 +28,47 @@ export const dropService = {
       return { success: false, error: "Drop window has expired" };
     }
 
-    const drop = await dropRepository.create({ shiftId, userId, expiresAt });
-    await notificationService.notifyDropCreated(shiftId, drop.id);
-    return { success: true, drop };
+    const existingDrop = await dropRepository.findByShiftAndUser(shiftId, userId);
+    if (existingDrop) {
+      if (
+        existingDrop.status === "OPEN" ||
+        existingDrop.status === "CLAIMED_PENDING_APPROVAL"
+      ) {
+        return { success: false, error: "You already have a drop request for this shift" };
+      }
+      if (existingDrop.status === "CANCELLED" || existingDrop.status === "EXPIRED") {
+        const drop = await dropRepository.reopen(existingDrop.id, expiresAt);
+        const locationId = drop.shift?.locationId ?? shift.locationId;
+        if (locationId) await notificationService.notifyDropCreated(shiftId, drop.id, locationId);
+        return { success: true, drop };
+      }
+      return {
+        success: false,
+        error: "A drop request for this shift already exists. Withdraw any open request first.",
+      };
+    }
+
+    try {
+      const drop = await dropRepository.create({ shiftId, userId, expiresAt });
+      const locationId = drop.shift?.locationId;
+      if (locationId) await notificationService.notifyDropCreated(shiftId, drop.id, locationId);
+      return { success: true, drop };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        const existing = await dropRepository.findByShiftAndUser(shiftId, userId);
+        if (existing && (existing.status === "CANCELLED" || existing.status === "EXPIRED")) {
+          const drop = await dropRepository.reopen(existing.id, expiresAt);
+          const locationId = drop.shift?.locationId;
+          if (locationId) await notificationService.notifyDropCreated(shiftId, drop.id, locationId);
+          return { success: true, drop };
+        }
+        return {
+          success: false,
+          error: "You already have a drop request for this shift",
+        };
+      }
+      throw err;
+    }
   },
 
   async claim(dropRequestId: string, userId: string) {
@@ -37,6 +77,9 @@ export const dropService = {
     if (drop.expiresAt <= new Date()) {
       await dropRepository.updateStatus(dropRequestId, "EXPIRED");
       return null;
+    }
+    if (drop.userId === userId) {
+      return { success: false, error: "You cannot claim your own drop request" };
     }
 
     const violation = await constraintService.checkAssignment(drop.shiftId, userId);
@@ -47,7 +90,23 @@ export const dropService = {
       claimedBy: userId,
       claimedAt: new Date(),
     });
-    await notificationService.notifyDropClaimed(drop.userId, dropRequestId);
+    const claimer = await userRepository.findById(userId);
+    await notificationService.notifyDropClaimed(
+      drop.userId,
+      dropRequestId,
+      claimer?.firstName,
+      claimer?.lastName
+    );
+    const locationId = drop.shift?.locationId;
+    if (locationId) {
+      const managerIds = await userRepository.getAdminAndManagerIdsForLocation(locationId);
+      await notificationService.notifyManagersDropClaimed(
+        managerIds,
+        dropRequestId,
+        claimer?.firstName,
+        claimer?.lastName
+      );
+    }
     emitDropClaimed(drop.userId, { dropRequestId, status: updated.status });
     return { success: true, drop: updated };
   },
@@ -79,9 +138,28 @@ export const dropService = {
     return updated;
   },
 
+  /** Owner withdraws their drop request while it is still OPEN (no one has claimed yet). They keep the shift. */
+  async cancelByOwner(dropRequestId: string, userId: string) {
+    const drop = await dropRepository.findById(dropRequestId);
+    if (!drop) return null;
+    if (drop.userId !== userId) return { success: false, error: "You can only withdraw your own drop request" };
+    if (drop.status !== "OPEN") return { success: false, error: "Only open drop requests can be withdrawn" };
+    const updated = await dropRepository.updateStatus(dropRequestId, "CANCELLED", { cancelledAt: new Date() });
+    return { success: true, drop: updated };
+  },
+
   async listOpen(locationId?: string) {
     if (locationId) return dropRepository.findOpenByLocation(locationId);
     return dropRepository.findOpen();
+  },
+
+  async listPendingApproval(userRole: Role, userId: string, locationId?: string) {
+    if (locationId) return dropRepository.findPendingApprovalByLocation(locationId);
+    if (userRole === Role.MANAGER) {
+      const locationIds = await userRepository.getManagerLocationIds(userId);
+      return dropRepository.findPendingApprovalByLocations(locationIds);
+    }
+    return dropRepository.findPendingApproval();
   },
 
   async getMyDrops(userId: string) {

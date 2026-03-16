@@ -28,6 +28,13 @@ export const paginationQuerySchema = z.object({
   limit: z.string().transform(Number).optional().default("20"),
 });
 
+export const listUsersQuerySchema = z.object({
+  page: z.string().transform(Number).optional().default("1"),
+  limit: z.string().transform(Number).optional().default("20"),
+  role: z.enum(["ADMIN", "MANAGER", "STAFF"]).optional(),
+  locationId: z.string().min(1).optional(),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

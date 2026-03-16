@@ -4,12 +4,14 @@ import { userRepository } from "../repositories/user.repository";
 
 export function requireRole(...allowedRoles: Role[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.userId || !req.userRole) {
+    const userId = req.userId;
+    const userRole = req.userRole;
+    if (!userId || !userRole) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
 
-    if (!allowedRoles.includes(req.userRole)) {
+    if (!allowedRoles.includes(userRole)) {
       res.status(403).json({ error: "Insufficient permissions" });
       return;
     }
@@ -42,6 +44,14 @@ export function requireStaff(
   return requireRole(Role.ADMIN, Role.MANAGER, Role.STAFF)(req, res, next);
 }
 
+export function requireStaffOnly(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  return requireRole(Role.STAFF)(req, res, next);
+}
+
 export function canAccessLocation(locationIdParamKey: string) {
   return async (
     req: Request,
@@ -59,8 +69,14 @@ export function canAccessLocation(locationIdParamKey: string) {
       return;
     }
 
-    const userId = req.userId!;
-    if (req.userRole === Role.MANAGER) {
+    const userId = req.userId;
+    const userRole = req.userRole;
+    if (!userId || !userRole) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    if (userRole === Role.MANAGER) {
       const ids = await userRepository.getManagerLocationIds(userId);
       if (ids.includes(locationId)) {
         next();
@@ -70,7 +86,7 @@ export function canAccessLocation(locationIdParamKey: string) {
       return;
     }
 
-    if (req.userRole === Role.STAFF) {
+    if (userRole === Role.STAFF) {
       const ids = await userRepository.getStaffLocationIds(userId);
       if (ids.includes(locationId)) {
         next();

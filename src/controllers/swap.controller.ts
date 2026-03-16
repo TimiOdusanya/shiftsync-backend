@@ -66,7 +66,7 @@ export const swapController = {
   },
 
   async getMyRequests(req: Request, res: Response): Promise<void> {
-    const result = await swapService.getMyRequests(req.userId!);
+    const result = await swapService.getMyRequests(req.userId!, req.userRole!);
     res.json(result);
   },
 };

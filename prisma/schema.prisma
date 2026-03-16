@@ -26,6 +26,8 @@ model User {
   shiftAssignments        ShiftAssignment[]
   swapRequestsInitiated   SwapRequest[] @relation("SwapRequester")
   swapRequestsReceived    SwapRequest[] @relation("SwapReceiver")
+  swapRequestsApproved    SwapRequest[] @relation("ManagerApproved")
+  swapRequestsRejected   SwapRequest[] @relation("ManagerRejected")
   dropRequests            DropRequest[]
   shiftPickups            ShiftPickup[]
   notifications           Notification[]
@@ -179,9 +181,8 @@ model ShiftAssignment {
   assignedAt DateTime @default(now()) @map("assigned_at")
   assignedBy String?  @map("assigned_by")
 
-  shift        Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  swapRequest  SwapRequest?
+  shift Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([shiftId, userId])
   @@map("shift_assignments")
@@ -189,22 +190,25 @@ model ShiftAssignment {
 
 // ============== SWAP & DROP ==============
 model SwapRequest {
-  id                 String     @id @default(cuid())
-  shiftId            String     @map("shift_id")
-  requesterId        String     @map("requester_id")
-  receiverId         String     @map("receiver_id")
-  status             SwapStatus @default(PENDING_ACCEPTANCE)
-  managerApprovedBy  String?    @map("manager_approved_by")
-  managerApprovedAt  DateTime?  @map("manager_approved_at")
-  createdAt          DateTime   @default(now()) @map("created_at")
-  updatedAt          DateTime   @updatedAt @map("updated_at")
-  cancelledAt        DateTime?  @map("cancelled_at")
-  cancelReason       String?    @map("cancel_reason")
+  id                  String     @id @default(cuid())
+  shiftId             String     @map("shift_id")
+  requesterId         String     @map("requester_id")
+  receiverId          String     @map("receiver_id")
+  status              SwapStatus @default(PENDING_ACCEPTANCE)
+  managerApprovedBy   String?    @map("manager_approved_by")
+  managerApprovedAt   DateTime?  @map("manager_approved_at")
+  managerRejectedBy   String?    @map("manager_rejected_by")
+  managerRejectedAt   DateTime?  @map("manager_rejected_at")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+  cancelledAt         DateTime?  @map("cancelled_at")
+  cancelReason        String?    @map("cancel_reason")
 
-  shift       Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  requester   User             @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
-  receiver    User             @relation("SwapReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  assignment  ShiftAssignment  @relation(fields: [shiftId, requesterId], references: [shiftId, userId], onDelete: Cascade)
+  shift                Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  requester             User             @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver              User             @relation("SwapReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  managerApprovedByUser  User?            @relation("ManagerApproved", fields: [managerApprovedBy], references: [id], onDelete: SetNull)
+  managerRejectedByUser User?            @relation("ManagerRejected", fields: [managerRejectedBy], references: [id], onDelete: SetNull)
 
   @@unique([shiftId, requesterId])
   @@map("swap_requests")

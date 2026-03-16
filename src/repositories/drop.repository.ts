@@ -25,7 +25,7 @@ export const dropRepository = {
     return prisma.dropRequest.findMany({
       where: { status: "OPEN", expiresAt: { gt: new Date() } },
       include: { shift: { include: { location: true, skill: true } }, user: true },
-      orderBy: { expiresAt: "asc" },
+      orderBy: { createdAt: "desc" },
       take: limit,
     });
   },
@@ -38,6 +38,51 @@ export const dropRepository = {
         shift: { locationId },
       },
       include: { shift: { include: { location: true, skill: true } }, user: true },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  findPendingApproval(limit = 50) {
+    return prisma.dropRequest.findMany({
+      where: { status: "CLAIMED_PENDING_APPROVAL" },
+      include: {
+        shift: { include: { location: true, skill: true } },
+        user: true,
+        pickup: { include: { user: true } },
+      },
+      orderBy: { claimedAt: "desc" },
+      take: limit,
+    });
+  },
+
+  findPendingApprovalByLocation(locationId: string) {
+    return prisma.dropRequest.findMany({
+      where: {
+        status: "CLAIMED_PENDING_APPROVAL",
+        shift: { locationId },
+      },
+      include: {
+        shift: { include: { location: true, skill: true } },
+        user: true,
+        pickup: { include: { user: true } },
+      },
+      orderBy: { claimedAt: "desc" },
+    });
+  },
+
+  findPendingApprovalByLocations(locationIds: string[]) {
+    if (locationIds.length === 0) return Promise.resolve([]);
+    return prisma.dropRequest.findMany({
+      where: {
+        status: "CLAIMED_PENDING_APPROVAL",
+        shift: { locationId: { in: locationIds } },
+      },
+      include: {
+        shift: { include: { location: true, skill: true } },
+        user: true,
+        pickup: { include: { user: true } },
+      },
+      orderBy: { claimedAt: "desc" },
     });
   },
 
@@ -45,6 +90,7 @@ export const dropRepository = {
     return prisma.dropRequest.findMany({
       where: { userId, status: { in: ["OPEN", "CLAIMED_PENDING_APPROVAL"] } },
       include: { shift: { include: { location: true, skill: true } } },
+      orderBy: { createdAt: "desc" },
     });
   },
 
@@ -57,6 +103,22 @@ export const dropRepository = {
   create(data: { shiftId: string; userId: string; expiresAt: Date }) {
     return prisma.dropRequest.create({
       data: { ...data, status: "OPEN" },
+      include: { shift: true, user: true },
+    });
+  },
+
+  /** Reopen a CANCELLED or EXPIRED drop so the same user can offer the shift again (unique on shiftId+userId). */
+  async reopen(id: string, expiresAt: Date) {
+    await prisma.shiftPickup.deleteMany({ where: { dropRequestId: id } });
+    return prisma.dropRequest.update({
+      where: { id },
+      data: {
+        status: "OPEN",
+        expiresAt,
+        claimedBy: null,
+        claimedAt: null,
+        cancelledAt: null,
+      },
       include: { shift: true, user: true },
     });
   },

@@ -11,8 +11,14 @@ import type { CreateShiftInput, UpdateShiftInput } from "../validators/shift";
 import type { ShiftFilters } from "../repositories/shift.repository";
 
 export const shiftService = {
-  async getById(id: string) {
-    return shiftRepository.findById(id);
+  async getById(id: string, requestorRole?: Role, requestorId?: string) {
+    const shift = await shiftRepository.findById(id);
+    if (!shift) return null;
+    if (requestorRole === Role.STAFF && shift.scheduleState === ScheduleState.DRAFT) {
+      const isAssigned = requestorId && shift.assignments.some((a) => a.userId === requestorId);
+      if (!isAssigned) return null;
+    }
+    return shift;
   },
 
   async list(filters: ShiftFilters, requestorId: string, requestorRole: Role) {
@@ -31,10 +37,16 @@ export const shiftService = {
     const effectiveFilters = { ...filters };
     if (locationIds && locationIds.length > 0 && !filters.locationId)
       effectiveFilters.locationIds = locationIds;
+    if (requestorRole === Role.STAFF) {
+      effectiveFilters.staffUserId = requestorId;
+    }
     return shiftRepository.findMany(effectiveFilters);
   },
 
   async create(data: CreateShiftInput, createdBy: string) {
+    if (new Date(data.startAt).getTime() < Date.now()) {
+      throw new Error("Shift start cannot be in the past.");
+    }
     const shift = await shiftRepository.create({
       locationId: data.locationId,
       skillId: data.skillId,
@@ -50,6 +62,10 @@ export const shiftService = {
   async update(id: string, data: UpdateShiftInput, updatedBy: string) {
     const before = await shiftRepository.findById(id);
     if (!before) return null;
+
+    if (data.startAt != null && new Date(data.startAt).getTime() < Date.now()) {
+      throw new Error("Shift start cannot be in the past.");
+    }
 
     const updatePayload: Parameters<typeof shiftRepository.update>[1] = {};
     if (data.locationId != null) updatePayload.locationId = data.locationId;

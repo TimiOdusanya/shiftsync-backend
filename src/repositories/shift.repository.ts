@@ -8,6 +8,7 @@ export interface ShiftFilters {
   startDate?: Date;
   endDate?: Date;
   state?: ScheduleState;
+  staffUserId?: string;
 }
 
 export const shiftRepository = {
@@ -27,7 +28,16 @@ export const shiftRepository = {
     if (filters.locationId) and.push({ locationId: filters.locationId });
     if (filters.locationIds && filters.locationIds.length > 0)
       and.push({ locationId: { in: filters.locationIds } });
-    if (filters.state) and.push({ scheduleState: filters.state });
+    if (filters.staffUserId) {
+      and.push({
+        OR: [
+          { scheduleState: ScheduleState.PUBLISHED },
+          { assignments: { some: { userId: filters.staffUserId } } },
+        ],
+      });
+    } else if (filters.state) {
+      and.push({ scheduleState: filters.state });
+    }
     if (filters.startDate) and.push({ startAt: { gte: filters.startDate } });
     if (filters.endDate) and.push({ endAt: { lte: filters.endDate } });
     const where = and.length > 0 ? { AND: and } : {};

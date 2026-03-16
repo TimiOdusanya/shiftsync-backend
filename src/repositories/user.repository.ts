@@ -81,4 +81,15 @@ export const userRepository = {
       .findMany({ where: { userId }, select: { skillId: true } })
       .then((rows: { skillId: string }[]) => rows.map((r: { skillId: string }) => r.skillId));
   },
+
+  async getAdminAndManagerIdsForLocation(locationId: string): Promise<string[]> {
+    const [admins, managers] = await Promise.all([
+      prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } }),
+      prisma.managerLocation.findMany({ where: { locationId }, select: { userId: true } }),
+    ]);
+    const ids = new Set<string>();
+    admins.forEach((u) => ids.add(u.id));
+    managers.forEach((m) => ids.add(m.userId));
+    return Array.from(ids);
+  },
 };

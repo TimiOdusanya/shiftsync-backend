@@ -46,9 +46,33 @@ export const dropController = {
     res.json(result);
   },
 
+  async cancelByOwner(req: Request, res: Response): Promise<void> {
+    const id = req.params.id as string;
+    const result = await dropService.cancelByOwner(id, req.userId!);
+    if (!result) {
+      res.status(404).json({ error: "Drop request not found" });
+      return;
+    }
+    if (!result.success && "error" in result) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
+  },
+
   async listOpen(req: Request, res: Response): Promise<void> {
     const locationId = req.query.locationId as string | undefined;
     const drops = await dropService.listOpen(locationId);
+    res.json(drops);
+  },
+
+  async listPendingApproval(req: Request, res: Response): Promise<void> {
+    const locationId = req.query.locationId as string | undefined;
+    const drops = await dropService.listPendingApproval(
+      req.userRole!,
+      req.userId!,
+      locationId
+    );
     res.json(drops);
   },
 
